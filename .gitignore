@@ -1,0 +1,41 @@
+# ── Python ───────────────────────────────────────────────
+__pycache__/
+*.py[oc]
+*.pyo
+build/
+dist/
+wheels/
+*.egg-info/
+.eggs/
+
+# ── uv / virtualenv ──────────────────────────────────────
+.venv/
+.python-version
+
+# ── Environment variables (never commit secrets!) ────────
+.env
+.env.local
+.env.*.local
+
+# ── Node / Frontend ──────────────────────────────────────
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.local
+
+# ── Cloned / extracted repos (temp ingestion files) ──────
+backend/tmp_repos/
+backend/tmp_zips/
+
+# ── Sentence Transformers model cache ────────────────────
+backend/.model_cache/
+
+# ── OS / Editor ──────────────────────────────────────────
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+
+project-overview.md
