@@ -29,6 +29,20 @@ async def lifespan(app: FastAPI):
         logger.warning("Qdrant not reachable: %s", e)
         logger.warning("Start Qdrant with: docker compose up qdrant -d")
 
+    # Verify Neo4j is reachable
+    try:
+        from ingestion.graph_builder import get_neo4j_driver
+        driver = get_neo4j_driver()
+        driver.verify_connectivity()
+        server_info = driver.get_server_info()
+        logger.info(
+            "Neo4j connected at %s (v%s)",
+            settings.neo4j_uri, server_info.agent,
+        )
+    except Exception as e:
+        logger.warning("Neo4j not reachable: %s", e)
+        logger.warning("Start Neo4j with: docker compose up neo4j -d")
+
     # Verify Groq API key is set
     if not settings.groq_api_key:
         logger.warning(
@@ -43,6 +57,12 @@ async def lifespan(app: FastAPI):
     logger.info("CodeGraphRAG startup complete — accepting requests")
     yield  # Server is now running
 
+    # Shutdown cleanup
+    try:
+        from ingestion.graph_builder import close_neo4j_driver
+        close_neo4j_driver()
+    except Exception:
+        pass
     logger.info("CodeGraphRAG shutting down...")
 
 
@@ -77,11 +97,11 @@ app.add_middleware(
 
 # ── Routes ────────────────────────────────────────────────────────────────────
 
-# Routers will be added here as we build each phase:
-# from api.routes.ingest import router as ingest_router
-# from api.routes.query import router as query_router
-# app.include_router(ingest_router, prefix="/api", tags=["Ingestion"])
-# app.include_router(query_router, prefix="/api", tags=["Query"])
+from api.routes.ingest import router as ingest_router
+from api.routes.query import router as query_router
+
+app.include_router(ingest_router, prefix="/api", tags=["Ingestion"])
+app.include_router(query_router, prefix="/api", tags=["Query"])
 
 
 # ── Health check ─────────────────────────────────────────────────────────────

@@ -26,6 +26,7 @@ frontend/.vite/
 # ── Cloned / extracted repos (temp ingestion files) ──────
 backend/tmp_repos/
 backend/tmp_zips/
+backend/logs/
 
 # ── Sentence Transformers model cache ────────────────────
 backend/.model_cache/

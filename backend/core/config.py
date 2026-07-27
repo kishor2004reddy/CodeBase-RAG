@@ -19,6 +19,12 @@ class Settings(BaseSettings):
     qdrant_url: str = "http://localhost:6333"
     qdrant_collection: str = "codebase"
 
+    # Neo4j graph database
+    neo4j_uri: str = "bolt://localhost:7687"
+    neo4j_user: str = ""
+    neo4j_password: str = ""
+    neo4j_database: str = "neo4j"
+
     # Embeddings
     embedding_model: str = "BAAI/bge-small-en-v1.5"
 
