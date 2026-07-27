@@ -4,6 +4,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from core.config import settings
+from core.logging import configure_logging, get_logger
+
+
+# ── Logging — initialise before anything else uses it ────────────────────────
+
+configure_logging(settings.log_level)
+logger = get_logger(__name__)
 
 
 # ── Lifespan: runs on startup & shutdown ────────────────────────────────────
@@ -11,34 +18,42 @@ from core.config import settings
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Startup checks before the server begins accepting requests."""
+
     # Verify Qdrant is reachable
     try:
         from qdrant_client import QdrantClient
         client = QdrantClient(url=settings.qdrant_url, timeout=5)
         client.get_collections()
-        print(f"✅ Qdrant connected at {settings.qdrant_url}")
+        logger.info("Qdrant connected at %s", settings.qdrant_url)
     except Exception as e:
-        print(f"⚠️  Qdrant not reachable: {e}")
-        print("   Start Qdrant with: docker compose up qdrant -d")
+        logger.warning("Qdrant not reachable: %s", e)
+        logger.warning("Start Qdrant with: docker compose up qdrant -d")
 
     # Verify Groq API key is set
     if not settings.groq_api_key:
-        print("⚠️  GROQ_API_KEY is not set — LLM generation will fail.")
-        print("   Add it to your .env file. Get a free key at https://console.groq.com")
+        logger.warning(
+            "GROQ_API_KEY is not set — LLM generation will fail. "
+            "Add it to your .env file. Get a free key at https://console.groq.com"
+        )
     else:
-        print(f"✅ Groq API key loaded (model: {settings.groq_model_general})")
+        logger.info(
+            "Groq API key loaded (model: %s)", settings.groq_model_general
+        )
 
+    logger.info("CodeGraphRAG startup complete — accepting requests")
     yield  # Server is now running
 
-    # Shutdown cleanup (if needed in future)
-    print("🛑 Shutting down CodeGraphRAG...")
+    logger.info("CodeGraphRAG shutting down...")
 
 
 # ── App instance ─────────────────────────────────────────────────────────────
 
 app = FastAPI(
     title="CodeGraphRAG",
-    description="Structure-aware RAG system for intelligently querying codebases using AST parsing, knowledge graphs, and hybrid retrieval.",
+    description=(
+        "Structure-aware RAG system for intelligently querying codebases "
+        "using AST parsing, knowledge graphs, and hybrid retrieval."
+    ),
     version="0.1.0",
     lifespan=lifespan,
     docs_url="/docs",
