@@ -9,6 +9,8 @@ Applies strict prompt constraints:
   - Falls back to "Not found in indexed repository" if information is missing.
 """
 
+import os
+from dotenv import load_dotenv
 from groq import Groq
 from pydantic import BaseModel, Field
 
@@ -20,16 +22,23 @@ logger = get_logger(__name__)
 
 _groq_client: Groq | None = None
 
-
 def _get_groq_client() -> Groq:
     """Singleton Groq client."""
     global _groq_client
     if _groq_client is None:
-        if not settings.groq_api_key:
+        # Load environment variables dynamically if not present in settings
+        api_key = settings.groq_api_key or os.getenv("GROQ_API_KEY")
+        if not api_key:
+            # Force reload dotenv from root and current directory
+            load_dotenv()
+            load_dotenv("../.env")
+            api_key = os.getenv("GROQ_API_KEY")
+
+        if not api_key:
             raise ValueError(
                 "GROQ_API_KEY is not configured in .env file. Please add your key."
             )
-        _groq_client = Groq(api_key=settings.groq_api_key)
+        _groq_client = Groq(api_key=api_key)
     return _groq_client
 
 
