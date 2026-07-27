@@ -3,6 +3,7 @@ import RepoInput from './components/RepoInput'
 import ChatPanel from './components/ChatPanel'
 import StatusBar from './components/StatusBar'
 import GraphDrawer from './components/GraphDrawer'
+import EvalDashboard from './components/EvalDashboard'
 
 export type IngestStatus = 'idle' | 'loading' | 'done' | 'error'
 
@@ -18,7 +19,8 @@ function App() {
   const [activeRepoId, setActiveRepoId] = useState<string | null>(null)
   const [repoStats, setRepoStats] = useState<RepoStats | null>(null)
 
-  // Drawer state
+  // Drawer & Modal state
+  const [evalOpen, setEvalOpen] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [drawerGraphCount, setDrawerGraphCount] = useState(0)
   const [drawerCitations, setDrawerCitations] = useState<string[]>([])
@@ -82,8 +84,17 @@ function App() {
         </div>
 
         {activeRepoId && (
-          <div className="active-repo-badge">
-            📌 Active Repo: <strong>{activeRepoId}</strong>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button
+              onClick={() => setEvalOpen(true)}
+              className="btn-ghost"
+              style={{ fontSize: '12px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '6px' }}
+            >
+              📊 Evaluation Benchmarks
+            </button>
+            <div className="active-repo-badge">
+              📌 Active Repo: <strong>{activeRepoId}</strong>
+            </div>
           </div>
         )}
       </header>
@@ -118,6 +129,13 @@ function App() {
         graphCount={drawerGraphCount}
         citations={drawerCitations}
         modelUsed={drawerModelUsed}
+      />
+
+      {/* Evaluation Dashboard Modal */}
+      <EvalDashboard
+        isOpen={evalOpen}
+        onClose={() => setEvalOpen(false)}
+        activeRepoId={activeRepoId}
       />
     </div>
   )

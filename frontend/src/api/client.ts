@@ -90,6 +90,47 @@ export async function queryCodebase(
   return res.json()
 }
 
+export interface TestCaseResult {
+  query: string
+  category: string
+  retrieval_hit: boolean
+  retrieved_files: string[]
+  citations_count: number
+  has_valid_citations: boolean
+  latency_seconds: number
+  answer_snippet: string
+}
+
+export interface EvaluationMetrics {
+  total_queries: number
+  retrieval_hit_rate: number
+  citation_accuracy: number
+  mean_latency_seconds: number
+  completed_at: string
+  results: TestCaseResult[]
+}
+
+export async function runEvaluation(
+  repoId: string,
+  useCodeModel: boolean = false,
+): Promise<EvaluationMetrics> {
+  const res = await fetch(`${BASE_URL}/eval/run`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      repo_id: repoId,
+      use_code_model: useCodeModel,
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || 'Evaluation benchmark failed')
+  }
+
+  return res.json()
+}
+
 // ── Health Check ─────────────────────────────────────────────────────────────
 
 export async function checkHealth(): Promise<HealthResponse> {

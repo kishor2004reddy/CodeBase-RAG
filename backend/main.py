@@ -99,9 +99,11 @@ app.add_middleware(
 
 from api.routes.ingest import router as ingest_router
 from api.routes.query import router as query_router
+from api.routes.eval import router as eval_router
 
 app.include_router(ingest_router, prefix="/api", tags=["Ingestion"])
 app.include_router(query_router, prefix="/api", tags=["Query"])
+app.include_router(eval_router, prefix="/api", tags=["Evaluation"])
 
 
 # ── Health check ─────────────────────────────────────────────────────────────
