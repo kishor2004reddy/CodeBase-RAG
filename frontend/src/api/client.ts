@@ -1,87 +1,101 @@
-import type { IngestStatus } from '../App'
+/**
+ * api/client.ts
+ * -------------
+ * Frontend API client for CodeGraphRAG backend endpoints.
+ */
 
 const BASE_URL = '/api'
 
-// ── Ingestion ────────────────────────────────────────────────────────────────
-
-export async function ingestRepo(
-  repoUrl: string,
-  onStatusChange: (status: IngestStatus, message: string) => void,
-): Promise<void> {
-  // Start ingestion job
-  const res = await fetch(`${BASE_URL}/ingest`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ repo_url: repoUrl }),
-  })
-
-  if (!res.ok) {
-    throw new Error(`Ingestion failed: ${res.statusText}`)
-  }
-
-  const { job_id } = await res.json()
-  onStatusChange('loading', 'Cloning repository...')
-
-  // Poll for progress
-  await pollIngestStatus(job_id, onStatusChange)
+export interface IngestResponse {
+  repo_id: string
+  status: string
+  files_processed: number
+  symbols_extracted: number
+  chunks_created: number
+  message: string
 }
 
-async function pollIngestStatus(
-  jobId: string,
-  onStatusChange: (status: IngestStatus, message: string) => void,
-): Promise<void> {
-  const maxAttempts = 120   // 2 minutes max (polling every second)
-  let attempts = 0
-
-  while (attempts < maxAttempts) {
-    await delay(2000)
-    attempts++
-
-    const res = await fetch(`${BASE_URL}/ingest/status/${jobId}`)
-    if (!res.ok) continue
-
-    const data = await res.json()
-
-    onStatusChange('loading', data.message ?? 'Processing...')
-
-    if (data.status === 'done') {
-      onStatusChange('done', `✅ Indexed ${data.chunks ?? ''} chunks from ${data.files ?? ''} files.`)
-      return
-    }
-
-    if (data.status === 'error') {
-      onStatusChange('error', data.message ?? 'Ingestion failed.')
-      throw new Error(data.message)
-    }
-  }
-
-  onStatusChange('error', 'Ingestion timed out. Try a smaller repository.')
-  throw new Error('Timeout')
-}
-
-// ── Query ────────────────────────────────────────────────────────────────────
-
-export interface QueryResult {
+export interface QueryResponse {
+  query: string
+  repo_id: string
   answer: string
   citations: string[]
+  model_used: string
+  graph_nodes_count: number
 }
 
-export async function queryRepo(question: string): Promise<QueryResult> {
-  const res = await fetch(`${BASE_URL}/query`, {
+export interface HealthResponse {
+  status: string
+  app: string
+  version: string
+  env: string
+}
+
+// ── Ingestion ────────────────────────────────────────────────────────────────
+
+export async function ingestGithubRepo(githubUrl: string): Promise<IngestResponse> {
+  const res = await fetch(`${BASE_URL}/ingest/github`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ question }),
+    body: JSON.stringify({ github_url: githubUrl }),
   })
 
   if (!res.ok) {
-    throw new Error(`Query failed: ${res.statusText}`)
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || 'GitHub ingestion failed')
   }
 
   return res.json()
 }
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
+export async function ingestZipRepo(file: File): Promise<IngestResponse> {
+  const formData = new FormData()
+  formData.append('file', file)
 
-function delay(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
+  const res = await fetch(`${BASE_URL}/ingest/zip`, {
+    method: 'POST',
+    body: formData,
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || 'ZIP ingestion failed')
+  }
+
+  return res.json()
+}
+
+// ── Query ────────────────────────────────────────────────────────────────────
+
+export async function queryCodebase(
+  query: string,
+  repoId: string,
+  useCodeModel: boolean = false,
+): Promise<QueryResponse> {
+  const res = await fetch(`${BASE_URL}/query`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      query,
+      repo_id: repoId,
+      use_code_model: useCodeModel,
+    }),
+  })
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || 'Query execution failed')
+  }
+
+  return res.json()
+}
+
+// ── Health Check ─────────────────────────────────────────────────────────────
+
+export async function checkHealth(): Promise<HealthResponse> {
+  const res = await fetch('/health')
+  if (!res.ok) {
+    throw new Error('Backend health check failed')
+  }
+  return res.json()
 }
