@@ -18,6 +18,7 @@ Features:
 
 from __future__ import annotations
 
+import redis as redis_lib
 from typing import Annotated
 
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage
@@ -158,6 +159,10 @@ def init_rag_graph() -> None:
 
     Must be called once during app startup (in lifespan).
     Stores the compiled graph in the module-level singleton.
+
+    NOTE: RedisSaver.from_conn_string() returns a context manager, not a
+    saver instance — calling .setup() on it fails. We pass a direct Redis
+    client to the RedisSaver constructor instead.
     """
     global _compiled_graph
 
@@ -168,10 +173,10 @@ def init_rag_graph() -> None:
         "refresh_on_read": True,                           # reset TTL on access
     }
 
-    checkpointer = RedisSaver.from_conn_string(
-        settings.redis_url,
-        ttl=ttl_config,
-    )
+    # Create a raw Redis client and pass it directly to RedisSaver.
+    # from_conn_string() returns a _GeneratorContextManager, not a RedisSaver.
+    redis_client = redis_lib.from_url(settings.redis_url)
+    checkpointer = RedisSaver(redis_client=redis_client, ttl=ttl_config)
     checkpointer.setup()   # creates required Redis indices (idempotent)
 
     _compiled_graph = build_rag_graph(checkpointer)

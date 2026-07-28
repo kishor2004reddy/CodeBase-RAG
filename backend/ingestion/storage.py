@@ -34,7 +34,7 @@ def _get_client() -> QdrantClient:
     """Return the singleton Qdrant client."""
     global _client
     if _client is None:
-        _client = QdrantClient(url=settings.qdrant_url)
+        _client = QdrantClient(url=settings.qdrant_url, timeout=60)
         logger.info("Qdrant client created for %s", settings.qdrant_url)
     return _client
 

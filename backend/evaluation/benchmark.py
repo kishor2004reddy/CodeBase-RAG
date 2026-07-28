@@ -15,7 +15,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 from core.logging import get_logger
-from generation.llm_chain import generate_answer
+from generation.llm_chain import QueryAnswer, build_llm_chain, build_user_message
 from retrieval.hybrid_retriever import retrieve_context
 
 logger = get_logger(__name__)
@@ -131,8 +131,16 @@ def run_benchmark(
                 for exp in case.expected_files
             ) if case.expected_files else len(retrieved_files) > 0
 
-            # 2. Execute LLM Generation
-            ans = generate_answer(query=case.query, context=retrieved, use_code_model=use_code_model)
+            # 2. Execute LLM Generation (no chat history needed for benchmarks)
+            chain, model_name = build_llm_chain(use_code_model=use_code_model)
+            user_msg_text = build_user_message(case.query, retrieved)
+            ai_response = chain.invoke({"messages": [], "user_message": user_msg_text})
+            ans = QueryAnswer(
+                answer=ai_response.content or "",
+                citations=retrieved.file_citations,
+                model_used=model_name,
+                context_chunks_count=len(retrieved.vector_results) + len(retrieved.symbol_results),
+            )
             elapsed = time.time() - start_time
 
             has_citations = len(ans.citations) > 0
