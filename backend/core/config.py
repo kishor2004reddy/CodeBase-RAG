@@ -36,6 +36,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     log_level: str = "INFO"
 
+    # Redis — session memory + LangGraph checkpointing
+    redis_url: str = "redis://localhost:6379"
+    session_ttl_minutes: int = 10080   # 7 days — sessions expire after inactivity
+    max_history_turns: int = 20        # cap injected turns to avoid LLM token overflow
+
 
 # Singleton instance — import this everywhere
 settings = Settings()

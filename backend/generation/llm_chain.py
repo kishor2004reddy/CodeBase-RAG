@@ -1,17 +1,26 @@
 """
 generation/llm_chain.py
 -----------------------
-LLM answer generation chain using Groq API.
+LangChain-based LLM generation chain using ChatGroq.
 
-Applies strict prompt constraints:
-  - Answers based ONLY on the provided codebase context.
-  - Requires mandatory file citations in [filepath#Lstart-Lend] format.
-  - Falls back to "Not found in indexed repository" if information is missing.
+Uses:
+  - ChatGroq         — LangChain wrapper around Groq API
+  - ChatPromptTemplate + MessagesPlaceholder — structured prompt with injected chat history
+  - BaseMessage types (HumanMessage, AIMessage) — native LangGraph message format
+
+History injection is handled automatically via MessagesPlaceholder, which reads
+`state["messages"]` from the LangGraph state — no manual list building required.
+
+Strict answer rules are preserved:
+  - Grounded ONLY on provided codebase context
+  - Mandatory file citations [filepath#Lstart-Lend]
+  - Falls back gracefully if context is insufficient
 """
 
-import os
-from dotenv import load_dotenv
-from groq import Groq
+from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
+from langchain_core.runnables import Runnable
+from langchain_groq import ChatGroq
 from pydantic import BaseModel, Field
 
 from core.config import settings
@@ -20,27 +29,8 @@ from retrieval.hybrid_retriever import RetrievedContext
 
 logger = get_logger(__name__)
 
-_groq_client: Groq | None = None
 
-def _get_groq_client() -> Groq:
-    """Singleton Groq client."""
-    global _groq_client
-    if _groq_client is None:
-        # Load environment variables dynamically if not present in settings
-        api_key = settings.groq_api_key or os.getenv("GROQ_API_KEY")
-        if not api_key:
-            # Force reload dotenv from root and current directory
-            load_dotenv()
-            load_dotenv("../.env")
-            api_key = os.getenv("GROQ_API_KEY")
-
-        if not api_key:
-            raise ValueError(
-                "GROQ_API_KEY is not configured in .env file. Please add your key."
-            )
-        _groq_client = Groq(api_key=api_key)
-    return _groq_client
-
+# ── System prompt ─────────────────────────────────────────────────────────────
 
 SYSTEM_PROMPT = """You are CodeGraphRAG, an expert AI assistant specializing in deep codebase reasoning over multi-language repositories.
 
@@ -54,8 +44,10 @@ STRICT RULES YOU MUST FOLLOW:
 """
 
 
+# ── Response model ────────────────────────────────────────────────────────────
+
 class QueryAnswer(BaseModel):
-    """Response object returned to the user."""
+    """Response object returned to the API layer."""
 
     answer: str
     citations: list[str] = Field(default_factory=list)
@@ -63,62 +55,67 @@ class QueryAnswer(BaseModel):
     context_chunks_count: int
 
 
-def generate_answer(
-    query: str,
-    context: RetrievedContext,
-    use_code_model: bool = False,
-) -> QueryAnswer:
+# ── Chain builder ─────────────────────────────────────────────────────────────
+
+def build_llm_chain(use_code_model: bool = False) -> tuple[Runnable, str]:
     """
-    Generate an answer to user query given retrieved context using Groq LLM.
+    Build and return a LangChain runnable chain for RAG answer generation.
+
+    The chain structure is:
+        ChatPromptTemplate (system + history + current question) | ChatGroq
+
+    MessagesPlaceholder("messages") automatically injects the full conversation
+    history from the LangGraph state, enabling multi-turn memory with zero
+    manual list management.
 
     Parameters
     ----------
-    query : str
-        User natural language question.
-    context : RetrievedContext
-        Hybrid context from retriever.
     use_code_model : bool
-        Whether to use deepseek code model or general llama model.
+        If True, uses the DeepSeek code-specialised model. Otherwise uses
+        the general LLaMA model.
 
     Returns
     -------
-    QueryAnswer
-        Answer text + structured citations.
+    tuple[Runnable, str]
+        (compiled chain, model name used)
     """
-    client = _get_groq_client()
-    model_name = settings.groq_model_code if use_code_model else settings.groq_model_general
+    model_name = (
+        settings.groq_model_code if use_code_model else settings.groq_model_general
+    )
 
-    user_message = f"""USER QUESTION:
-{query}
+    llm = ChatGroq(
+        model=model_name,
+        api_key=settings.groq_api_key,
+        temperature=0.2,    # Low temperature for factual, grounded answers
+        max_tokens=1500,
+    )
 
-CONTEXT FROM CODEBASE (Vector Search + Symbol Graph + Dependency Traversal):
-{context.formatted_context_str}
+    prompt = ChatPromptTemplate.from_messages([
+        ("system", SYSTEM_PROMPT),
+        # Injects state["messages"] — full prior conversation history
+        MessagesPlaceholder(variable_name="messages"),
+        # Current user question with retrieval context appended
+        ("human", "{user_message}"),
+    ])
 
-Please answer the question accurately using the context above. Include mandatory file citations [filepath#Lstart-Lend].
-"""
+    chain = prompt | llm
+    return chain, model_name
 
-    logger.info("Generating answer via Groq model: %s", model_name)
 
-    try:
-        completion = client.chat.completions.create(
-            model=model_name,
-            messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
-                {"role": "user", "content": user_message},
-            ],
-            temperature=0.2,   # Low temperature for factual grounding
-            max_tokens=1500,
-        )
+# ── Message builder ───────────────────────────────────────────────────────────
 
-        answer_text = completion.choices[0].message.content or ""
+def build_user_message(query: str, context: RetrievedContext) -> str:
+    """
+    Format the current user question with retrieval context into a single
+    human message string. This is passed as `user_message` to the chain.
 
-        return QueryAnswer(
-            answer=answer_text,
-            citations=context.file_citations,
-            model_used=model_name,
-            context_chunks_count=len(context.vector_results) + len(context.symbol_results),
-        )
-
-    except Exception as e:
-        logger.error("LLM generation failed: %s", e, exc_info=True)
-        raise RuntimeError(f"LLM generation failed: {e}") from e
+    The retrieval context (vector hits, symbol graph, Cypher expansion) is
+    appended directly to the question so the LLM has full grounding material.
+    """
+    return (
+        f"USER QUESTION:\n{query}\n\n"
+        f"CONTEXT FROM CODEBASE (Vector Search + Symbol Graph + Dependency Traversal):\n"
+        f"{context.formatted_context_str}\n\n"
+        f"Please answer the question accurately using the context above. "
+        f"Include mandatory file citations [filepath#Lstart-Lend]."
+    )

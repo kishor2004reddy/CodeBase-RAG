@@ -16,7 +16,7 @@ logger = get_logger(__name__)
 # ── Lifespan: runs on startup & shutdown ────────────────────────────────────
 
 @asynccontextmanager
-async def lifespan(app: FastAPI):
+async def lifespan(app: FastAPI):  # noqa: ARG001
     """Startup checks before the server begins accepting requests."""
 
     # Verify Qdrant is reachable
@@ -43,6 +43,16 @@ async def lifespan(app: FastAPI):
         logger.warning("Neo4j not reachable: %s", e)
         logger.warning("Start Neo4j with: docker compose up neo4j -d")
 
+    # Verify Redis is reachable
+    try:
+        import redis as redis_lib
+        r = redis_lib.from_url(settings.redis_url, socket_connect_timeout=5)
+        r.ping()
+        logger.info("Redis connected at %s", settings.redis_url)
+    except Exception as e:
+        logger.warning("Redis not reachable: %s", e)
+        logger.warning("Start Redis with: docker compose up redis -d")
+
     # Verify Groq API key is set
     if not settings.groq_api_key:
         logger.warning(
@@ -53,6 +63,14 @@ async def lifespan(app: FastAPI):
         logger.info(
             "Groq API key loaded (model: %s)", settings.groq_model_general
         )
+
+    # Initialise LangGraph RAG graph + RedisSaver checkpointer
+    try:
+        from core.rag_graph import init_rag_graph
+        init_rag_graph()
+    except Exception as e:
+        logger.warning("LangGraph graph initialisation failed: %s", e)
+        logger.warning("Ensure Redis is running before starting the backend.")
 
     logger.info("CodeGraphRAG startup complete — accepting requests")
     yield  # Server is now running

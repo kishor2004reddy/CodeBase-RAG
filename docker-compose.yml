@@ -40,11 +40,13 @@ services:
     environment:
       - QDRANT_URL=http://qdrant:6333
       - NEO4J_URI=bolt://neo4j:7687
+      - REDIS_URL=redis://redis:6379
     volumes:
       - ./backend:/app
     depends_on:
       - qdrant
       - neo4j
+      - redis
     restart: unless-stopped
 
   # ── React Frontend (dev) ──────────────────────────────────────────────────────
@@ -62,6 +64,18 @@ services:
       - backend
     restart: unless-stopped
 
+  # ── Redis (Session Memory + LangGraph Checkpointing) ─────────────────────────
+  redis:
+    image: redis/redis-stack:latest   # redis-stack includes RedisJSON + RediSearch (required by RedisSaver)
+    container_name: coderag-redis
+    ports:
+      - "6379:6379"   # Redis
+      - "8001:8001"   # RedisInsight UI — inspect checkpoints at http://localhost:8001
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
 volumes:
   qdrant_data:
   neo4j_data:
+  redis_data:
