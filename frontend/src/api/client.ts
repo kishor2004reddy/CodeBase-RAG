@@ -18,10 +18,26 @@ export interface IngestResponse {
 export interface QueryResponse {
   query: string
   repo_id: string
+  session_id: string
+  checkpoint_id: string
   answer: string
   citations: string[]
   model_used: string
   graph_nodes_count: number
+  context_chunks_count: number
+}
+
+export interface CheckpointInfo {
+  checkpoint_id: string
+  turn_index: number
+  timestamp: string | null
+  query_preview: string
+}
+
+export interface SessionHistoryResponse {
+  session_id: string
+  total_turns: number
+  checkpoints: CheckpointInfo[]
 }
 
 export interface HealthResponse {
@@ -71,6 +87,7 @@ export async function queryCodebase(
   query: string,
   repoId: string,
   useCodeModel: boolean = false,
+  sessionId?: string,
 ): Promise<QueryResponse> {
   const res = await fetch(`${BASE_URL}/query`, {
     method: 'POST',
@@ -79,6 +96,7 @@ export async function queryCodebase(
       query,
       repo_id: repoId,
       use_code_model: useCodeModel,
+      session_id: sessionId ?? null,
     }),
   })
 
@@ -88,6 +106,25 @@ export async function queryCodebase(
   }
 
   return res.json()
+}
+
+// ── Session API ───────────────────────────────────────────────────────────────
+
+export async function getSessionHistory(sessionId: string): Promise<SessionHistoryResponse> {
+  const res = await fetch(`${BASE_URL}/session/${sessionId}/history`)
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || 'Failed to fetch session history')
+  }
+  return res.json()
+}
+
+export async function deleteSession(sessionId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/session/${sessionId}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || 'Failed to delete session')
+  }
 }
 
 export interface TestCaseResult {

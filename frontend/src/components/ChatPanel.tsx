@@ -1,3 +1,10 @@
+/**
+ * components/ChatPanel.tsx
+ * ------------------------
+ * Chat interface for a single session.
+ * Sends session_id with every query so LangGraph maintains Redis-backed history.
+ */
+
 import { useState, useRef, useEffect } from 'react'
 import Message from './Message'
 import { queryCodebase } from '../api/client'
@@ -13,15 +20,30 @@ export interface ChatMessage {
 
 interface Props {
   repoId: string | null
+  sessionId: string | null
   onInspectGraph: (graphCount: number, citations: string[], modelUsed: string) => void
+  onFirstMessage: (sessionId: string, text: string) => void
+  onMessageSent: (sessionId: string, preview: string) => void
 }
 
-export default function ChatPanel({ repoId, onInspectGraph }: Props) {
+export default function ChatPanel({
+  repoId,
+  sessionId,
+  onInspectGraph,
+  onFirstMessage,
+  onMessageSent,
+}: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [useCodeModel, setUseCodeModel] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
+
+  // Reset messages when session changes
+  useEffect(() => {
+    setMessages([])
+    setInput('')
+  }, [sessionId])
 
   // Auto-scroll to latest message
   useEffect(() => {
@@ -30,21 +52,24 @@ export default function ChatPanel({ repoId, onInspectGraph }: Props) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!input.trim() || !repoId || loading) return
+    if (!input.trim() || !repoId || !sessionId || loading) return
+
+    const questionText = input.trim()
+    const isFirstMessage = messages.length === 0
 
     const userMsg: ChatMessage = {
       id: crypto.randomUUID(),
       role: 'user',
-      content: input.trim(),
+      content: questionText,
     }
 
     setMessages(prev => [...prev, userMsg])
-    const questionText = input.trim()
     setInput('')
     setLoading(true)
 
     try {
-      const result = await queryCodebase(questionText, repoId, useCodeModel)
+      const result = await queryCodebase(questionText, repoId, useCodeModel, sessionId)
+
       const aiMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: 'assistant',
@@ -54,16 +79,26 @@ export default function ChatPanel({ repoId, onInspectGraph }: Props) {
         graphNodesCount: result.graph_nodes_count,
       }
       setMessages(prev => [...prev, aiMsg])
-    } catch (err: any) {
+
+      // Notify parent to update session name (first message) and preview
+      if (isFirstMessage) {
+        onFirstMessage(sessionId, questionText)
+      }
+      onMessageSent(sessionId, questionText)
+
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : 'Failed to generate response.'
       setMessages(prev => [...prev, {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `⚠️ Error: ${err.message || 'Failed to generate response.'}`,
+        content: `⚠️ Error: ${message}`,
       }])
     } finally {
       setLoading(false)
     }
   }
+
+  const isReady = repoId && sessionId
 
   return (
     <div style={{
@@ -71,11 +106,11 @@ export default function ChatPanel({ repoId, onInspectGraph }: Props) {
       flexDirection: 'column',
       flex: 1,
       overflow: 'hidden',
-      position: 'relative',
+      background: 'var(--color-bg)',
     }}>
-      {/* Control Bar: Model Toggle & Clear */}
+      {/* Control Bar */}
       <div style={{
-        padding: '10px 24px',
+        padding: '10px 20px',
         background: 'var(--color-surface)',
         borderBottom: '1px solid var(--color-border)',
         display: 'flex',
@@ -84,7 +119,7 @@ export default function ChatPanel({ repoId, onInspectGraph }: Props) {
       }}>
         {/* Model selector */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px' }}>
-          <span style={{ color: 'var(--color-muted)' }}>LLM Engine:</span>
+          <span style={{ color: 'var(--color-muted)', fontSize: '12px' }}>LLM Engine:</span>
           <button
             type="button"
             className={!useCodeModel ? 'btn-toggle active' : 'btn-toggle'}
@@ -106,9 +141,9 @@ export default function ChatPanel({ repoId, onInspectGraph }: Props) {
           <button
             onClick={() => setMessages([])}
             className="btn-ghost"
-            style={{ fontSize: '12px', padding: '3px 10px' }}
+            style={{ fontSize: '12px', padding: '4px 10px' }}
           >
-            🗑️ Clear Chat
+            🗑️ Clear
           </button>
         )}
       </div>
@@ -117,7 +152,7 @@ export default function ChatPanel({ repoId, onInspectGraph }: Props) {
       <div style={{
         flex: 1,
         overflowY: 'auto',
-        padding: '20px 24px',
+        padding: '24px 20px',
         display: 'flex',
         flexDirection: 'column',
         gap: '16px',
@@ -133,19 +168,22 @@ export default function ChatPanel({ repoId, onInspectGraph }: Props) {
             alignItems: 'center',
             gap: '12px',
           }}>
-            <span style={{ fontSize: '32px' }}>💡</span>
-            <div>
-              {repoId ? (
-                <>
-                  <strong>Repository <code style={{ color: 'var(--color-primary)' }}>{repoId}</code> is ready!</strong>
-                  <div style={{ marginTop: '6px', color: 'var(--color-muted)', fontSize: '13px' }}>
-                    Ask architecture questions like: <em>"How does authentication work?"</em> or <em>"What files import UserService?"</em>
-                  </div>
-                </>
-              ) : (
-                'Index a GitHub repository or upload a ZIP file above to begin querying.'
-              )}
-            </div>
+            <span style={{ fontSize: '36px' }}>💡</span>
+            {isReady ? (
+              <>
+                <div style={{ fontWeight: 600, color: 'var(--color-text)', fontSize: '15px' }}>
+                  Repository <code>{repoId}</code> is ready!
+                </div>
+                <div style={{ color: 'var(--color-muted)', fontSize: '13px', maxWidth: '380px' }}>
+                  Ask architecture questions like <em>"How does authentication work?"</em>
+                  {' '}or <em>"What files import UserService?"</em>
+                </div>
+              </>
+            ) : (
+              <div style={{ color: 'var(--color-muted)', fontSize: '13px' }}>
+                Select a chat from the sidebar or index a repository to begin.
+              </div>
+            )}
           </div>
         )}
 
@@ -163,15 +201,16 @@ export default function ChatPanel({ repoId, onInspectGraph }: Props) {
             alignItems: 'center',
             gap: '10px',
             color: 'var(--color-primary)',
-            fontSize: '14px',
+            fontSize: '13px',
             padding: '12px 16px',
             background: 'var(--color-surface)',
             borderRadius: 'var(--radius-md)',
-            border: '1px solid var(--color-border)',
+            border: '1.5px solid var(--color-border)',
             width: 'fit-content',
+            boxShadow: 'var(--shadow-sm)',
           }}>
             <span className="spinner">⏳</span>
-            <span>Performing Hybrid Vector + Neo4j Cypher Graph Expansion...</span>
+            <span>Hybrid Vector + Neo4j Cypher Graph Expansion…</span>
           </div>
         )}
         <div ref={bottomRef} />
@@ -181,27 +220,32 @@ export default function ChatPanel({ repoId, onInspectGraph }: Props) {
       <form
         onSubmit={handleSubmit}
         style={{
-          padding: '16px 24px 20px',
+          padding: '14px 20px 18px',
           borderTop: '1px solid var(--color-border)',
           background: 'var(--color-surface)',
           display: 'flex',
-          gap: '12px',
+          gap: '10px',
+          boxShadow: '0 -2px 8px rgba(0,0,0,0.04)',
         }}
       >
         <input
           type="text"
-          placeholder={repoId ? `Ask anything about ${repoId}...` : 'Index a repository first...'}
+          placeholder={
+            !repoId ? 'Index a repository first…' :
+            !sessionId ? 'Select or create a chat first…' :
+            `Ask anything about ${repoId}…`
+          }
           value={input}
           onChange={e => setInput(e.target.value)}
-          disabled={!repoId || loading}
+          disabled={!isReady || loading}
           style={{ flex: 1 }}
         />
         <button
           type="submit"
           className="btn-primary"
-          disabled={!repoId || loading || !input.trim()}
+          disabled={!isReady || loading || !input.trim()}
         >
-          {loading ? 'Searching...' : 'Send Question'}
+          {loading ? 'Searching…' : 'Send →'}
         </button>
       </form>
     </div>
