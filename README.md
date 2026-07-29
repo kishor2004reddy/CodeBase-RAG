@@ -151,6 +151,7 @@ START → [retrieve_node] → [generate_node] → END
 | `POST` | `/api/ingest/github` | Ingest a repo from a GitHub HTTPS URL |
 | `POST` | `/api/ingest/zip` | Ingest a repo from an uploaded `.zip` file |
 | `GET` | `/api/ingest/status` | Check if a repository has been ingested |
+| `DELETE` | `/api/repo/{repo_id}` | Permanently delete a repo's indexed data (Qdrant vectors + Neo4j graph) |
 
 ### Query & Chat
 

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { BarChart3, X, AlertTriangle, Rocket, Loader2, XCircle } from 'lucide-react'
 import { runEvaluation, type EvaluationMetrics } from '../api/client'
 
 interface Props {
@@ -62,22 +63,23 @@ export default function EvalDashboard({ isOpen, onClose, activeRepoId }: Props) 
         }}>
           <div>
             <h3 style={{ fontSize: '17px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              📊 Evaluation & Observability Suite
+              <BarChart3 size={17} /> Evaluation & Observability Suite
             </h3>
             <div style={{ fontSize: '12px', color: 'var(--color-muted)', marginTop: '2px' }}>
               Benchmark CodeGraphRAG retrieval accuracy, citation precision, and query latency
             </div>
           </div>
-          <button onClick={onClose} className="btn-ghost" style={{ padding: '4px 10px' }}>
-            ✕ Close
+          <button onClick={onClose} className="btn-ghost" style={{ padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            <X size={13} /> Close
           </button>
         </div>
 
         {/* Content */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
           {!activeRepoId ? (
-            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--color-muted)' }}>
-              ⚠️ Please index a repository first to run evaluation benchmarks.
+            <div style={{ textAlign: 'center', padding: '40px 0', color: 'var(--color-muted)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '10px' }}>
+              <AlertTriangle size={28} strokeWidth={1.5} />
+              <span>Please index a repository first to run evaluation benchmarks.</span>
             </div>
           ) : (
             <>
@@ -104,8 +106,10 @@ export default function EvalDashboard({ isOpen, onClose, activeRepoId }: Props) 
                   onClick={handleRunBenchmark}
                   className="btn-primary"
                   disabled={loading}
+                  style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
                 >
-                  {loading ? 'Running Suite...' : '🚀 Run Benchmark'}
+                  {loading ? <Loader2 size={14} className="spinner" /> : <Rocket size={14} />}
+                  {loading ? 'Running Suite...' : 'Run Benchmark'}
                 </button>
               </div>
 
@@ -118,8 +122,11 @@ export default function EvalDashboard({ isOpen, onClose, activeRepoId }: Props) 
                   borderRadius: 'var(--radius-sm)',
                   marginBottom: '20px',
                   fontSize: '13px',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '8px',
                 }}>
-                  ❌ {error}
+                  <XCircle size={14} /> {error}
                 </div>
               )}
 

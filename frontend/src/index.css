@@ -428,3 +428,8 @@ input:disabled {
 .sidebar-session-item.active .session-delete-btn {
   opacity: 1 !important;
 }
+
+/* Show delete button on repo group header hover */
+.sidebar-repo-header:hover .repo-delete-btn {
+  opacity: 1 !important;
+}

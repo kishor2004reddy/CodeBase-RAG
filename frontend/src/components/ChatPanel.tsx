@@ -3,11 +3,35 @@
  * ------------------------
  * Chat interface for a single session.
  * Sends session_id with every query so LangGraph maintains Redis-backed history.
+ * Messages are persisted to localStorage keyed by session so they survive refreshes.
  */
 
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useCallback } from 'react'
+import { Bot, Brain, Trash2, Lightbulb, Loader2 } from 'lucide-react'
 import Message from './Message'
 import { queryCodebase } from '../api/client'
+
+const MESSAGES_KEY = 'coderag:messages'
+
+function loadAllMessages(): Map<string, ChatMessage[]> {
+  try {
+    const raw = localStorage.getItem(MESSAGES_KEY)
+    if (!raw) return new Map()
+    const obj: Record<string, ChatMessage[]> = JSON.parse(raw)
+    return new Map(Object.entries(obj))
+  } catch {
+    return new Map()
+  }
+}
+
+function saveAllMessages(map: Map<string, ChatMessage[]>) {
+  try {
+    const obj = Object.fromEntries(map)
+    localStorage.setItem(MESSAGES_KEY, JSON.stringify(obj))
+  } catch {
+    // ignore quota errors
+  }
+}
 
 export interface ChatMessage {
   id: string
@@ -33,15 +57,32 @@ export default function ChatPanel({
   onFirstMessage,
   onMessageSent,
 }: Props) {
-  const [messages, setMessages] = useState<ChatMessage[]>([])
+  // Store messages per session — initialised from localStorage
+  const [sessionMessages, setSessionMessages] = useState<Map<string, ChatMessage[]>>(loadAllMessages)
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [useCodeModel, setUseCodeModel] = useState(false)
   const bottomRef = useRef<HTMLDivElement>(null)
 
-  // Reset messages when session changes
+  // Derive current messages from the map
+  const messages: ChatMessage[] = sessionId ? (sessionMessages.get(sessionId) ?? []) : []
+
+  // Persist to localStorage whenever messages change
   useEffect(() => {
-    setMessages([])
+    saveAllMessages(sessionMessages)
+  }, [sessionMessages])
+
+  // Helper to update messages for a specific session
+  const setMessages = useCallback((sid: string, updater: (prev: ChatMessage[]) => ChatMessage[]) => {
+    setSessionMessages(prev => {
+      const next = new Map(prev)
+      next.set(sid, updater(next.get(sid) ?? []))
+      return next
+    })
+  }, [])
+
+  // Clear input when switching sessions
+  useEffect(() => {
     setInput('')
   }, [sessionId])
 
@@ -54,6 +95,7 @@ export default function ChatPanel({
     e.preventDefault()
     if (!input.trim() || !repoId || !sessionId || loading) return
 
+    const currentSessionId = sessionId
     const questionText = input.trim()
     const isFirstMessage = messages.length === 0
 
@@ -63,12 +105,12 @@ export default function ChatPanel({
       content: questionText,
     }
 
-    setMessages(prev => [...prev, userMsg])
+    setMessages(currentSessionId, prev => [...prev, userMsg])
     setInput('')
     setLoading(true)
 
     try {
-      const result = await queryCodebase(questionText, repoId, useCodeModel, sessionId)
+      const result = await queryCodebase(questionText, repoId, useCodeModel, currentSessionId)
 
       const aiMsg: ChatMessage = {
         id: crypto.randomUUID(),
@@ -78,20 +120,20 @@ export default function ChatPanel({
         modelUsed: result.model_used,
         graphNodesCount: result.graph_nodes_count,
       }
-      setMessages(prev => [...prev, aiMsg])
+      setMessages(currentSessionId, prev => [...prev, aiMsg])
 
       // Notify parent to update session name (first message) and preview
       if (isFirstMessage) {
-        onFirstMessage(sessionId, questionText)
+        onFirstMessage(currentSessionId, questionText)
       }
-      onMessageSent(sessionId, questionText)
+      onMessageSent(currentSessionId, questionText)
 
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to generate response.'
-      setMessages(prev => [...prev, {
+      setMessages(currentSessionId, prev => [...prev, {
         id: crypto.randomUUID(),
         role: 'assistant',
-        content: `⚠️ Error: ${message}`,
+        content: `**Error:** ${message}`,
       }])
     } finally {
       setLoading(false)
@@ -124,26 +166,28 @@ export default function ChatPanel({
             type="button"
             className={!useCodeModel ? 'btn-toggle active' : 'btn-toggle'}
             onClick={() => setUseCodeModel(false)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
           >
-            🦙 Llama 3.3 70B
+            <Bot size={13} /> Llama 3.3 70B
           </button>
           <button
             type="button"
             className={useCodeModel ? 'btn-toggle active' : 'btn-toggle'}
             onClick={() => setUseCodeModel(true)}
+            style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}
           >
-            🧠 DeepSeek-Coder 70B
+            <Brain size={13} /> DeepSeek-Coder 70B
           </button>
         </div>
 
         {/* Clear chat */}
-        {messages.length > 0 && (
+        {messages.length > 0 && sessionId && (
           <button
-            onClick={() => setMessages([])}
+            onClick={() => setMessages(sessionId, () => [])}
             className="btn-ghost"
-            style={{ fontSize: '12px', padding: '4px 10px' }}
+            style={{ fontSize: '12px', padding: '4px 10px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
           >
-            🗑️ Clear
+            <Trash2 size={13} /> Clear
           </button>
         )}
       </div>
@@ -168,7 +212,7 @@ export default function ChatPanel({
             alignItems: 'center',
             gap: '12px',
           }}>
-            <span style={{ fontSize: '36px' }}>💡</span>
+            <Lightbulb size={36} color="var(--color-muted-2)" strokeWidth={1.5} />
             {isReady ? (
               <>
                 <div style={{ fontWeight: 600, color: 'var(--color-text)', fontSize: '15px' }}>
@@ -209,7 +253,7 @@ export default function ChatPanel({
             width: 'fit-content',
             boxShadow: 'var(--shadow-sm)',
           }}>
-            <span className="spinner">⏳</span>
+            <Loader2 size={16} className="spinner" />
             <span>Hybrid Vector + Neo4j Cypher Graph Expansion…</span>
           </div>
         )}

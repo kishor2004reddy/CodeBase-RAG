@@ -4,9 +4,10 @@ api/routes/ingest.py
 REST API endpoints for ingesting repositories.
 
 Endpoints:
-  POST /api/ingest/github  — ingest from a GitHub URL
-  POST /api/ingest/zip     — ingest from an uploaded ZIP file
-  GET  /api/ingest/status  — check if a repo has been ingested
+  POST   /api/ingest/github   — ingest from a GitHub URL
+  POST   /api/ingest/zip      — ingest from an uploaded ZIP file
+  GET    /api/ingest/status   — check if a repo has been ingested
+  DELETE /api/repo/{repo_id}  — permanently delete a repo's indexed data
 """
 
 import uuid
@@ -38,6 +39,12 @@ class IngestResponse(BaseModel):
     files_processed: int
     symbols_extracted: int
     chunks_created: int
+    message: str
+
+
+class DeleteRepoResponse(BaseModel):
+    """Response after deleting a repository's indexed data."""
+    repo_id: str
     message: str
 
 
@@ -239,3 +246,35 @@ async def ingest_zip(file: UploadFile = File(...)):
         logger.error("ZIP ingestion failed: %s", e, exc_info=True)
         zip_path.unlink(missing_ok=True)
         raise HTTPException(status_code=500, detail=f"Ingestion failed: {e}")
+
+
+@router.delete("/repo/{repo_id:path}", response_model=DeleteRepoResponse)
+async def delete_repo(repo_id: str):
+    """
+    Permanently delete a repository's indexed data.
+
+    Removes the repo's Neo4j knowledge graph (symbols + relationships)
+    and its Qdrant vectors. This does NOT delete any chat session/history —
+    use DELETE /api/session/{session_id} for that.
+
+    The `{repo_id:path}` converter allows repo_id values containing slashes
+    (e.g. "owner/repo" from GitHub ingestion, or "zip/my-project" from ZIP
+    uploads) to be passed as a single path segment.
+    """
+    from ingestion.graph_builder import clear_repo_graph
+    from ingestion.storage import delete_repo_vectors
+
+    if not repo_id.strip():
+        raise HTTPException(status_code=400, detail="repo_id must be provided.")
+
+    try:
+        clear_repo_graph(repo_id)
+        delete_repo_vectors(repo_id)
+        logger.info("Deleted all indexed data for repo '%s'", repo_id)
+        return DeleteRepoResponse(
+            repo_id=repo_id,
+            message=f"Successfully deleted all indexed data for '{repo_id}'.",
+        )
+    except Exception as e:
+        logger.error("Failed to delete repo '%s': %s", repo_id, e, exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to delete repo: {e}")

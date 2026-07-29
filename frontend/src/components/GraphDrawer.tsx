@@ -5,6 +5,8 @@
  * (CALLS, IMPORTS, INHERITS) retrieved from Neo4j for a query.
  */
 
+import { Network, X, Bot, FileText, Pin } from 'lucide-react'
+
 interface Props {
   isOpen: boolean
   onClose: () => void
@@ -51,14 +53,14 @@ export default function GraphDrawer({
           alignItems: 'center',
         }}>
           <h3 style={{ fontSize: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span>🕸️</span> Query Retrieval Details
+            <Network size={16} /> Query Retrieval Details
           </h3>
           <button
             onClick={onClose}
             className="btn-ghost"
-            style={{ padding: '4px 10px', fontSize: '13px' }}
+            style={{ padding: '4px 10px', fontSize: '13px', display: 'inline-flex', alignItems: 'center', gap: '5px' }}
           >
-            ✕ Close
+            <X size={13} /> Close
           </button>
         </div>
 
@@ -67,15 +69,15 @@ export default function GraphDrawer({
           {/* Metadata badges */}
           <div style={{ marginBottom: '20px', display: 'flex', flexDirection: 'column', gap: '10px' }}>
             <div className="info-card">
-              <span className="info-label">🤖 LLM Model:</span>
+              <span className="info-label" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Bot size={12} /> LLM Model:</span>
               <span className="info-val">{modelUsed || 'llama-3.3-70b-versatile'}</span>
             </div>
             <div className="info-card">
-              <span className="info-label">🕸️ Neo4j Graph Nodes Expanded:</span>
+              <span className="info-label" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><Network size={12} /> Neo4j Graph Nodes Expanded:</span>
               <span className="info-val">{graphCount} dependency nodes</span>
             </div>
             <div className="info-card">
-              <span className="info-label">📄 Grounded Citations:</span>
+              <span className="info-label" style={{ display: 'inline-flex', alignItems: 'center', gap: '4px' }}><FileText size={12} /> Grounded Citations:</span>
               <span className="info-val">{citations.length} files cited</span>
             </div>
           </div>
@@ -102,9 +104,12 @@ export default function GraphDrawer({
                     fontSize: '12px',
                     color: 'var(--color-primary)',
                     wordBreak: 'break-all',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
                   }}
                 >
-                  📌 {cite}
+                  <Pin size={12} /> {cite}
                 </div>
               ))}
             </div>

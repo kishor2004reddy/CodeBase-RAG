@@ -40,13 +40,6 @@ export interface SessionHistoryResponse {
   checkpoints: CheckpointInfo[]
 }
 
-export interface HealthResponse {
-  status: string
-  app: string
-  version: string
-  env: string
-}
-
 // ── Ingestion ────────────────────────────────────────────────────────────────
 
 export async function ingestGithubRepo(githubUrl: string): Promise<IngestResponse> {
@@ -79,6 +72,16 @@ export async function ingestZipRepo(file: File): Promise<IngestResponse> {
   }
 
   return res.json()
+}
+
+// ── Repository deletion ─────────────────────────────────────────────────────
+
+export async function deleteRepo(repoId: string): Promise<void> {
+  const res = await fetch(`${BASE_URL}/repo/${repoId}`, { method: 'DELETE' })
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ detail: res.statusText }))
+    throw new Error(err.detail || 'Failed to delete repository data')
+  }
 }
 
 // ── Query ────────────────────────────────────────────────────────────────────
@@ -168,12 +171,3 @@ export async function runEvaluation(
   return res.json()
 }
 
-// ── Health Check ─────────────────────────────────────────────────────────────
-
-export async function checkHealth(): Promise<HealthResponse> {
-  const res = await fetch('/health')
-  if (!res.ok) {
-    throw new Error('Backend health check failed')
-  }
-  return res.json()
-}

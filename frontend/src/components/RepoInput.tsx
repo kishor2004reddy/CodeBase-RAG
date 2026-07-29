@@ -1,36 +1,36 @@
 import { useState } from 'react'
-import type { IngestStatus } from '../App'
+import { GitBranch, FileArchive, FolderPlus, X, Loader2, XCircle } from 'lucide-react'
 import { ingestGithubRepo, ingestZipRepo } from '../api/client'
 
 interface Props {
-  onIngestSuccess: (repoId: string, files: number, symbols: number, chunks: number) => void
-  onStatusChange: (status: IngestStatus, message: string) => void
+  onIngestSuccess: (repoId: string) => void
+  // Only provided when there's an existing chat to fall back to —
+  // omitted on first launch when a repo must be indexed to proceed.
+  onCancel?: () => void
 }
 
-export default function RepoInput({ onIngestSuccess, onStatusChange }: Props) {
+// This component is unmounted/remounted each time it's shown (App.tsx swaps
+// it in/out of the tree rather than just hiding it), so this local state
+// always starts fresh — no leftover results from a previous ingestion.
+export default function RepoInput({ onIngestSuccess, onCancel }: Props) {
   const [tab, setTab] = useState<'github' | 'zip'>('github')
   const [repoUrl, setRepoUrl] = useState('')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const handleGithubSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!repoUrl.trim() || loading) return
 
     setLoading(true)
-    onStatusChange('loading', 'Cloning repository & parsing AST...')
+    setError(null)
 
     try {
       const result = await ingestGithubRepo(repoUrl.trim())
-      onStatusChange('done', result.message)
-      onIngestSuccess(
-        result.repo_id,
-        result.files_processed,
-        result.symbols_extracted,
-        result.chunks_created
-      )
+      onIngestSuccess(result.repo_id)
     } catch (err: any) {
-      onStatusChange('error', err.message || 'Ingestion failed.')
+      setError(err.message || 'Ingestion failed.')
     } finally {
       setLoading(false)
     }
@@ -41,19 +41,13 @@ export default function RepoInput({ onIngestSuccess, onStatusChange }: Props) {
     if (!selectedFile || loading) return
 
     setLoading(true)
-    onStatusChange('loading', 'Uploading ZIP & parsing AST...')
+    setError(null)
 
     try {
       const result = await ingestZipRepo(selectedFile)
-      onStatusChange('done', result.message)
-      onIngestSuccess(
-        result.repo_id,
-        result.files_processed,
-        result.symbols_extracted,
-        result.chunks_created
-      )
+      onIngestSuccess(result.repo_id)
     } catch (err: any) {
-      onStatusChange('error', err.message || 'ZIP ingestion failed.')
+      setError(err.message || 'ZIP ingestion failed.')
     } finally {
       setLoading(false)
     }
@@ -61,6 +55,31 @@ export default function RepoInput({ onIngestSuccess, onStatusChange }: Props) {
 
   return (
     <div className="repo-input-container">
+      {/* Header — explains that a repo must be indexed to start this chat */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+        <div style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '7px',
+          fontSize: '13px',
+          fontWeight: 600,
+          color: 'var(--color-text)',
+        }}>
+          <FolderPlus size={15} color="var(--color-primary)" />
+          Index a repository to start this chat
+        </div>
+        {onCancel && (
+          <button
+            type="button"
+            onClick={onCancel}
+            className="btn-ghost"
+            style={{ fontSize: '12px', padding: '3px 9px', display: 'inline-flex', alignItems: 'center', gap: '4px' }}
+          >
+            <X size={12} /> Cancel
+          </button>
+        )}
+      </div>
+
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '8px', marginBottom: '12px' }}>
         <button
@@ -68,16 +87,18 @@ export default function RepoInput({ onIngestSuccess, onStatusChange }: Props) {
           className={tab === 'github' ? 'btn-tab active' : 'btn-tab'}
           onClick={() => setTab('github')}
           disabled={loading}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
         >
-          🐙 GitHub Repository
+          <GitBranch size={14} /> GitHub Repository
         </button>
         <button
           type="button"
           className={tab === 'zip' ? 'btn-tab active' : 'btn-tab'}
           onClick={() => setTab('zip')}
           disabled={loading}
+          style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}
         >
-          📦 ZIP File Upload
+          <FileArchive size={14} /> ZIP File Upload
         </button>
       </div>
 
@@ -127,6 +148,39 @@ export default function RepoInput({ onIngestSuccess, onStatusChange }: Props) {
             {loading ? 'Indexing ZIP...' : 'Upload & Index ZIP'}
           </button>
         </form>
+      )}
+
+      {/* Live feedback for the ingestion currently in progress — scoped to
+          this attempt only, never shows results from a previous chat. */}
+      {loading && (
+        <div style={{
+          marginTop: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          fontSize: '12px',
+          color: 'var(--color-primary)',
+        }}>
+          <Loader2 size={13} className="spinner" />
+          {tab === 'github' ? 'Cloning repository & parsing AST\u2026' : 'Uploading ZIP & parsing AST\u2026'}
+        </div>
+      )}
+
+      {error && (
+        <div style={{
+          marginTop: '12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          padding: '10px 14px',
+          background: 'rgba(248, 113, 113, 0.1)',
+          border: '1px solid var(--color-error)',
+          color: 'var(--color-error)',
+          borderRadius: 'var(--radius-sm)',
+          fontSize: '12px',
+        }}>
+          <XCircle size={14} /> {error}
+        </div>
       )}
     </div>
   )
